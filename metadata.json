@@ -1,6 +1,5 @@
 {
-  "name": "Mission Winners Dashboard",
-  "description": "A clean, modern business dashboard for viewing, filtering, and exporting player mission and prize data from Excel and CSV files.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "name": "Missions Dashboard",
+  "description": "A clean dashboard for viewing, filtering, and exporting player mission and prize data from Excel and CSV files.",
+  "requestFramePermissions": []
 }
