@@ -1,6 +1,0 @@
-{
-  "summary": "Implementation plan for the Mission Winners data dashboard, featuring Excel and CSV file ingestion, robust handling of repeated headers and multi-player exports, real-time filtering, sticky sortable 12-column table, column visibility toggles, KPI metric calculations, and multi-format exports.",
-  "updatedAt": "2026-10-15T10:22:40.946756878Z",
-  "requestFeedback": true,
-  "userFacing": true
-}
