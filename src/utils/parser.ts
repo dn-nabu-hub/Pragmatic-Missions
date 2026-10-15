@@ -18,49 +18,124 @@ function normalizeHeaderName(header: string): string {
 }
 
 /**
- * Robust date parser supporting MM/DD/YY HH:mm, MM/DD/YYYY, ISO, and Excel serial dates
+ * Robust date parser and formatter that converts mm/d/yy hh:mm and Excel serial numbers
+ * into strict dd/mm/yyyy hh:mm format
  */
-export function parseDateToTimestamp(val: unknown): number {
-  if (!val) return 0;
-  if (typeof val === 'number') {
-    // Excel serial date (days since 1899-12-30)
-    if (val > 10000 && val < 60000) {
-      const date = new Date(Math.round((val - 25569) * 86400 * 1000));
-      return isNaN(date.getTime()) ? 0 : date.getTime();
+export function formatDateTime(val: unknown): { formatted: string; timestamp: number } {
+  if (val === null || val === undefined) {
+    return { formatted: '', timestamp: 0 };
+  }
+
+  // 1. If it's already a Date object
+  if (val instanceof Date) {
+    if (isNaN(val.getTime())) return { formatted: '', timestamp: 0 };
+    const dd = String(val.getDate()).padStart(2, '0');
+    const mm = String(val.getMonth() + 1).padStart(2, '0');
+    const yyyy = String(val.getFullYear());
+    const hh = String(val.getHours()).padStart(2, '0');
+    const min = String(val.getMinutes()).padStart(2, '0');
+    return {
+      formatted: `${dd}/${mm}/${yyyy} ${hh}:${min}`,
+      timestamp: val.getTime(),
+    };
+  }
+
+  // 2. If it's an Excel serial date number (number or numeric string like 46301.570381944446)
+  const numVal = typeof val === 'number' ? val : Number(String(val).trim());
+  if (!isNaN(numVal) && numVal > 20000 && numVal < 100000) {
+    // Excel serial day 25569 = 1970-01-01
+    // Total milliseconds in UTC preserves exact wall-clock date and time from spreadsheet
+    const totalMs = Math.round((numVal - 25569) * 86400 * 1000);
+    const date = new Date(totalMs);
+    if (!isNaN(date.getTime())) {
+      const dd = String(date.getUTCDate()).padStart(2, '0');
+      const mm = String(date.getUTCMonth() + 1).padStart(2, '0');
+      const yyyy = String(date.getUTCFullYear());
+      const hh = String(date.getUTCHours()).padStart(2, '0');
+      const min = String(date.getUTCMinutes()).padStart(2, '0');
+      return {
+        formatted: `${dd}/${mm}/${yyyy} ${hh}:${min}`,
+        timestamp: totalMs,
+      };
     }
   }
 
   const str = String(val).trim();
-  if (!str || str === '-' || str === '—') return 0;
-
-  // Try standard Date parsing
-  const directDate = new Date(str);
-  if (!isNaN(directDate.getTime())) {
-    // If year is e.g. 26, directDate might interpret as 1926 or 2026. Let's inspect:
-    const year = directDate.getFullYear();
-    if (year < 1970) {
-      directDate.setFullYear(year + 100);
-    }
-    return directDate.getTime();
+  if (!str || str === '-' || str === '—') {
+    return { formatted: '', timestamp: 0 };
   }
 
-  // Handle M/D/YY H:mm or M/D/YYYY H:mm (e.g. 10/6/26 10:30)
-  const match = str.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
-  if (match) {
-    const month = parseInt(match[1], 10) - 1;
-    const day = parseInt(match[2], 10);
-    let year = parseInt(match[3], 10);
+  // 3. Format: mm/dd/yy hh:mm or m/d/yy h:mm or mm/dd/yyyy hh:mm
+  // In the file the format is mm/d/yy hh:mm -> convert to dd/mm/yyyy hh:mm
+  const mdMatch = str.match(
+    /^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})(?:\s+(\d{1,2}):(\d{2})(?::\d{2})?)?$/
+  );
+  if (mdMatch) {
+    const month = parseInt(mdMatch[1], 10);
+    const day = parseInt(mdMatch[2], 10);
+    let year = parseInt(mdMatch[3], 10);
     if (year < 100) {
       year = year < 50 ? 2000 + year : 1900 + year;
     }
-    const hours = match[4] ? parseInt(match[4], 10) : 0;
-    const minutes = match[5] ? parseInt(match[5], 10) : 0;
-    const seconds = match[6] ? parseInt(match[6], 10) : 0;
-    const date = new Date(year, month, day, hours, minutes, seconds);
-    return isNaN(date.getTime()) ? 0 : date.getTime();
+    const hours = mdMatch[4] ? parseInt(mdMatch[4], 10) : 0;
+    const minutes = mdMatch[5] ? parseInt(mdMatch[5], 10) : 0;
+
+    const dd = String(day).padStart(2, '0');
+    const mm = String(month).padStart(2, '0');
+    const yyyy = String(year);
+    const hh = String(hours).padStart(2, '0');
+    const min = String(minutes).padStart(2, '0');
+
+    const timestamp = new Date(year, month - 1, day, hours, minutes).getTime();
+    return {
+      formatted: `${dd}/${mm}/${yyyy} ${hh}:${min}`,
+      timestamp: isNaN(timestamp) ? 0 : timestamp,
+    };
   }
 
-  return 0;
+  // 4. Format: ISO yyyy-mm-dd hh:mm
+  const isoMatch = str.match(
+    /^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T\s](\d{1,2}):(\d{2})(?::\d{2})?)?$/
+  );
+  if (isoMatch) {
+    const year = parseInt(isoMatch[1], 10);
+    const month = parseInt(isoMatch[2], 10);
+    const day = parseInt(isoMatch[3], 10);
+    const hours = isoMatch[4] ? parseInt(isoMatch[4], 10) : 0;
+    const minutes = isoMatch[5] ? parseInt(isoMatch[5], 10) : 0;
+
+    const dd = String(day).padStart(2, '0');
+    const mm = String(month).padStart(2, '0');
+    const yyyy = String(year);
+    const hh = String(hours).padStart(2, '0');
+    const min = String(minutes).padStart(2, '0');
+
+    const timestamp = new Date(year, month - 1, day, hours, minutes).getTime();
+    return {
+      formatted: `${dd}/${mm}/${yyyy} ${hh}:${min}`,
+      timestamp: isNaN(timestamp) ? 0 : timestamp,
+    };
+  }
+
+  // 5. Fallback to standard Date parsing
+  const fallbackDate = new Date(str);
+  if (!isNaN(fallbackDate.getTime())) {
+    const dd = String(fallbackDate.getDate()).padStart(2, '0');
+    const mm = String(fallbackDate.getMonth() + 1).padStart(2, '0');
+    const yyyy = String(fallbackDate.getFullYear());
+    const hh = String(fallbackDate.getHours()).padStart(2, '0');
+    const min = String(fallbackDate.getMinutes()).padStart(2, '0');
+    return {
+      formatted: `${dd}/${mm}/${yyyy} ${hh}:${min}`,
+      timestamp: fallbackDate.getTime(),
+    };
+  }
+
+  return { formatted: str, timestamp: 0 };
+}
+
+export function parseDateToTimestamp(val: unknown): number {
+  return formatDateTime(val).timestamp;
 }
 
 /**
@@ -193,27 +268,39 @@ export function parseSheetRows(rows: unknown[][]): MissionRecord[] {
       return v === null || v === undefined ? '' : String(v).trim();
     };
 
+    const getRawVal = (key: string): unknown => {
+      const idx = headerMap[key];
+      if (idx === undefined || idx < 0 || idx >= row.length) return undefined;
+      return row[idx];
+    };
+
     const player = getVal('player');
     const tag = getVal('tag');
     const rawRoundId = getVal('roundId');
     const rawMission = getVal('missionNumber');
     const operator = getVal('operator');
     const brand = getVal('brand');
-    const winningDate = getVal('winningDate');
+    const rawWinningDate = getRawVal('winningDate');
     const rawPrizePlayerCur = getVal('prizePlayerCurrency');
     const currency = getVal('currency');
     const prizeReceived = getVal('prizeReceived');
     const rawPrizeEur = getVal('prizeEur');
     const prizeStatus = getVal('prizeStatus');
     const payoutStatus = getVal('payoutStatus');
-    const transactionDate = getVal('transactionDate');
+    const rawTransactionDate = getRawVal('transactionDate');
 
     // Skip if basically all primary fields are blank
-    if (!rawRoundId && !rawMission && !winningDate && !operator && !prizeReceived) {
+    if (!rawRoundId && !rawMission && !rawWinningDate && !operator && !prizeReceived) {
       continue;
     }
 
     const { display: roundIdDisplay, num: roundIdNum } = formatRoundId(rawRoundId);
+
+    // Format dates strictly to dd/mm/yyyy hh:mm
+    const { formatted: winningDateFormatted, timestamp: winningDateTimestamp } =
+      formatDateTime(rawWinningDate);
+    const { formatted: transactionDateFormatted, timestamp: transactionDateTimestamp } =
+      formatDateTime(rawTransactionDate);
 
     // Parse mission number
     const missionNumVal = parseInt(rawMission.replace(/\D/g, ''), 10) || 0;
@@ -243,8 +330,8 @@ export function parseSheetRows(rows: unknown[][]): MissionRecord[] {
       missionNumberVal: missionNumVal,
       operator: operator || '',
       brand: brand || '',
-      winningDate: winningDate || '',
-      winningDateTimestamp: parseDateToTimestamp(winningDate),
+      winningDate: winningDateFormatted,
+      winningDateTimestamp,
       prizePlayerCurrency: prizePlayerCurrencyNum,
       prizePlayerCurrencyRaw: rawPrizePlayerCur,
       currency: currency || '',
@@ -253,8 +340,8 @@ export function parseSheetRows(rows: unknown[][]): MissionRecord[] {
       prizeEurRaw: rawPrizeEur,
       prizeStatus: prizeStatus || '',
       payoutStatus: payoutStatus || '',
-      transactionDate: transactionDate || '',
-      transactionDateTimestamp: parseDateToTimestamp(transactionDate),
+      transactionDate: transactionDateFormatted,
+      transactionDateTimestamp,
     });
   }
 
